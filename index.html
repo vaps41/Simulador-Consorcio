@@ -105,6 +105,7 @@
                 // Aceita qualquer arquivo .csv em vez de travar em um mês específico
                 if (!file.name.toLowerCase().endsWith('.csv')) {
                     setUploadError('Por favor, envie um arquivo com extensão .csv baixado do Banco Central.');
+                    setBaseDate(null); // BUG FIX: garante que baseDate não fique com valor residual de arquivo inválido
                     return;
                 }
 
@@ -134,12 +135,12 @@
                             const cols = lines[i].split(';').map(c => c.replace(/["']/g, ''));
                             if (cols.length > taxaIdx) {
                                 const nome = cols[nomeIdx];
-                                const taxaStr = cols[taxaIdx].replace(',', '.').replace('%', ''); // Trata os decimais (BR)
+                                const taxaStr = cols[taxaIdx].replace(/,/g, '.').replace(/%/g, '').trim(); // BUG FIX: regex /,/g substitui TODAS as vírgulas; .trim() remove espaços ocultos
                                 const taxa = parseFloat(taxaStr);
                                 
                                 let fundo = 0;
                                 if (fundoIdx !== -1 && cols[fundoIdx]) {
-                                    fundo = parseFloat(cols[fundoIdx].replace(',', '.').replace('%', '')) || 0;
+                                    fundo = parseFloat(cols[fundoIdx].replace(/,/g, '.').replace(/%/g, '').trim()) || 0; // BUG FIX: regex e trim
                                 }
 
                                 // Agrupa e soma as taxas se a mesma empresa tiver vários grupos na planilha
@@ -211,6 +212,14 @@
                 
                 // Arquivos .csv do Governo Federal normalmente estão em ISO-8859-1 e não UTF-8
                 reader.readAsText(file, 'ISO-8859-1'); 
+            };
+
+            // Reseta para os dados embutidos e limpa qualquer estado de upload
+            const handleReset = () => {
+                setInstitutionsData(INSTITUTIONS);
+                setUploadError('');
+                setUploadSuccess(false);
+                setBaseDate(null);
             };
 
             // Re-render lucide icons when component updates
@@ -509,7 +518,48 @@
                             </p>
 
                             <div className="space-y-4">
-                                {results.map((inst, index) => (
+                                {uploadError ? (
+                                    /* ── Painel de erro: arquivo incompatível ── */
+                                    <div className="bg-red-50 border border-red-200 rounded-2xl p-8 flex flex-col items-center text-center">
+                                        <div className="bg-red-100 rounded-full p-4 mb-4">
+                                            <i data-lucide="file-x" className="w-10 h-10 text-red-500"></i>
+                                        </div>
+                                        <h3 className="text-lg font-bold text-red-700 mb-2">Arquivo Incompatível</h3>
+                                        <p className="text-sm text-red-600 mb-5 max-w-sm leading-relaxed">{uploadError}</p>
+
+                                        <div className="bg-white border border-slate-200 rounded-xl p-4 mb-5 text-left w-full max-w-sm shadow-sm">
+                                            <p className="text-xs font-bold text-slate-700 mb-3 flex items-center gap-1.5">
+                                                <i data-lucide="columns" className="w-3.5 h-3.5 text-slate-400"></i>
+                                                Colunas obrigatórias (manual BCB):
+                                            </p>
+                                            <div className="flex flex-col gap-1.5 mb-3">
+                                                <code className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2.5 py-1 font-mono">#Nome_da_Administradora</code>
+                                                <code className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded px-2.5 py-1 font-mono">Taxa_de_administração</code>
+                                                <code className="text-[11px] text-slate-400 bg-slate-50 border border-slate-100 rounded px-2.5 py-1 font-mono">Fundo_de_Reserva <span className="font-sans not-italic text-slate-400">(opcional)</span></code>
+                                            </div>
+                                            <p className="text-[11px] text-slate-400 leading-relaxed">
+                                                Arquivo esperado: <b className="text-slate-500">AAAAMMBens_Moveis_Grupos.csv</b><br/>
+                                                ou <b className="text-slate-500">AAAAMMBens_Imoveis_Grupos.csv</b><br/>
+                                                Disponível em: <a href="https://www.bcb.gov.br/estabilidadefinanceira/consorciobd" target="_blank" rel="noreferrer" className="text-blue-500 underline">Portal de Dados BCB</a>
+                                            </p>
+                                        </div>
+
+                                        <button
+                                            onClick={handleReset}
+                                            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors shadow-sm"
+                                        >
+                                            <i data-lucide="rotate-ccw" className="w-4 h-4"></i>
+                                            Voltar para os dados padrão
+                                        </button>
+                                    </div>
+                                ) : results.length === 0 ? (
+                                    /* ── Estado vazio: filtros sem resultado ── */
+                                    <div className="flex flex-col items-center justify-center py-16 text-slate-400 bg-white rounded-2xl border border-dashed border-slate-200">
+                                        <i data-lucide="search-x" className="w-10 h-10 mb-3 opacity-40"></i>
+                                        <p className="text-base font-semibold text-slate-500">Nenhuma instituição encontrada</p>
+                                        <p className="text-sm mt-1 text-center px-4">Tente ajustar os filtros de região ou desative o filtro de confiabilidade.</p>
+                                    </div>
+                                ) : results.map((inst, index) => (
                                     <div 
                                         key={inst.id} 
                                         className={`relative bg-white rounded-2xl shadow-sm border p-4 md:p-5 transition-all hover:shadow-md ${index === 0 ? 'border-blue-400 ring-1 ring-blue-400' : 'border-slate-200'}`}
